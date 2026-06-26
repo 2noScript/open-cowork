@@ -1712,6 +1712,14 @@ ${hints.join('\n')}
       // baseUrl is now embedded in the model object via resolvePiModel()
       logCtx('[ClaudeAgentRunner] Model baseUrl:', piModel.baseUrl, 'api:', piModel.api);
 
+      // Inject session ID as a header so custom API endpoints can track conversations
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (piModel as any).headers = {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...((piModel as any).headers as Record<string, string> | undefined),
+        'X-Session-Id': session.id,
+      };
+
       logTiming('after pi-ai model resolution', runStartTime);
 
       // the agent SDK handles path sandboxing via its own tools
