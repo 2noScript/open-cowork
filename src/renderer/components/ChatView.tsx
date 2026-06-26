@@ -14,7 +14,8 @@ import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
 import { MessageCard } from './MessageCard';
 import type { Message, ContentBlock } from '../types';
-import { Send, Square, Plus, Loader2, Plug, X, Clock } from 'lucide-react';
+import { Send, Square, Plus, Loader2, Plug, X, Clock, ChevronDown } from 'lucide-react';
+import { API_PROVIDER_PRESETS } from '../../shared/api-model-presets';
 
 type AttachedFile = {
   name: string;
@@ -67,6 +68,50 @@ export function ChatView() {
   const pendingCount = pendingTurns.length;
   const isSessionRunning = activeSession?.status === 'running';
   const canStop = isSessionRunning || hasActiveTurn || pendingCount > 0;
+
+  const modelOptions = useMemo(() => {
+    if (!appConfig) return [];
+    const { provider, customProtocol, profiles } = appConfig;
+    let models: Array<{ id: string; name: string }>;
+    if (provider === 'openrouter') models = [...API_PROVIDER_PRESETS.openrouter.models];
+    else if (provider === 'anthropic') models = [...API_PROVIDER_PRESETS.anthropic.models];
+    else if (provider === 'openai') models = [...API_PROVIDER_PRESETS.openai.models];
+    else if (provider === 'gemini') models = [...API_PROVIDER_PRESETS.gemini.models];
+    else if (provider === 'ollama') models = [...API_PROVIDER_PRESETS.ollama.models];
+    else if (customProtocol === 'openai') models = [...API_PROVIDER_PRESETS.openai.models];
+    else if (customProtocol === 'gemini') models = [...API_PROVIDER_PRESETS.gemini.models];
+    else models = [...API_PROVIDER_PRESETS.custom.models];
+
+    const seen = new Set(models.map((m) => m.id));
+    if (profiles) {
+      for (const profile of Object.values(profiles)) {
+        const modelId = profile?.model?.trim();
+        if (modelId && !seen.has(modelId)) {
+          seen.add(modelId);
+          models.push({ id: modelId, name: modelId });
+        }
+      }
+    }
+    if (appConfig.model && !seen.has(appConfig.model)) {
+      models.unshift({ id: appConfig.model, name: appConfig.model });
+    }
+    return models;
+  }, [appConfig]);
+
+  const handleModelChange = useCallback(
+    async (newModel: string) => {
+      if (!appConfig || !isElectron || !window.electronAPI) return;
+      try {
+        const result = await window.electronAPI.config.save({ ...appConfig, model: newModel });
+        if (result?.config) {
+          useAppStore.getState().setAppConfig(result.config);
+        }
+      } catch (err) {
+        console.error('Failed to switch model:', err);
+      }
+    },
+    [appConfig, isElectron]
+  );
 
   const displayedMessages = useMemo(() => {
     if (!activeSessionId) return messages;
@@ -817,10 +862,27 @@ export function ChatView() {
               />
 
               <div className="flex items-center gap-2">
-                {/* Model display */}
-                <span className="hidden sm:inline-flex px-2.5 py-1 rounded-full border border-border-subtle bg-background/60 text-xs text-text-muted">
-                  {appConfig?.model || t('chat.noModel')}
-                </span>
+                {/* Model switcher */}
+                <div className="hidden sm:relative sm:inline-flex">
+                  <select
+                    value={appConfig?.model || ''}
+                    onChange={(e) => handleModelChange(e.target.value)}
+                    className="appearance-none px-2.5 py-1 rounded-full border border-border-subtle bg-background/60 text-xs text-text-muted cursor-pointer pr-6 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                  >
+                    {modelOptions.length > 0 ? (
+                      modelOptions.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="" disabled>
+                        {t('api.noModelsAvailable')}
+                      </option>
+                    )}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-text-muted" />
+                </div>
 
                 {canStop && (
                   <button
